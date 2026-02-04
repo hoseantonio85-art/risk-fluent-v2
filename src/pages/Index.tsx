@@ -18,7 +18,7 @@ import {
 import { mockRisks } from '@/data/mockRisks';
 import { Risk } from '@/types/risk';
 
-type ScreenMode = 'view' | 'edit' | 'draft';
+type ScreenMode = 'view' | 'edit';
 
 interface DraftLimits {
   [riskId: string]: {
@@ -39,6 +39,7 @@ const Index = () => {
   // Screen mode state
   const [screenMode, setScreenMode] = useState<ScreenMode>('view');
   const [draftLimits, setDraftLimits] = useState<DraftLimits>({});
+  const [pendingChanges, setPendingChanges] = useState<DraftLimits>({});
   const [savedDraftLimits, setSavedDraftLimits] = useState<DraftLimits>({});
 
   // Filter state
@@ -71,8 +72,7 @@ const Index = () => {
 
   // Calculate aggregates based on filtered risks and current mode
   const aggregates = useMemo(() => {
-    const limitsToUse = screenMode === 'draft' ? savedDraftLimits : 
-                        screenMode === 'edit' ? draftLimits : {};
+    const limitsToUse = screenMode === 'edit' ? draftLimits : pendingChanges;
 
     let cleanOpTotal = 0;
     let cleanOpLimit = 0;
@@ -117,7 +117,7 @@ const Index = () => {
         total: potentialTotal
       }
     };
-  }, [filteredRisks, screenMode, draftLimits, savedDraftLimits]);
+  }, [filteredRisks, screenMode, draftLimits, pendingChanges]);
 
   const handleRiskClick = (risk: Risk) => {
     setSelectedRisk(risk);
@@ -156,7 +156,7 @@ const Index = () => {
     setIsEditOpen(true);
   };
 
-  const handleSaveEdit = (updatedRisk: Partial<Risk>) => {
+  const handleSaveRiskEdit = (updatedRisk: Partial<Risk>) => {
     setRisks(risks.map(r => 
       r.id === editingRisk?.id 
         ? { ...r, ...updatedRisk } 
@@ -164,6 +164,12 @@ const Index = () => {
     ));
     setIsEditOpen(false);
     setEditingRisk(null);
+  };
+
+  const handleSaveLimits = () => {
+    // Save changes to pending and return to view mode
+    setPendingChanges(draftLimits);
+    setScreenMode('view');
   };
 
   const handleLimitChange = (riskId: string, field: 'cleanOpRisk' | 'creditOpRisk' | 'indirectLosses', value: number) => {
@@ -179,10 +185,10 @@ const Index = () => {
   };
 
   const handleStartEdit = () => {
-    // Initialize draft with current or saved values
+    // Initialize draft with current or pending values
     const initialDraft: DraftLimits = {};
     risks.forEach(risk => {
-      initialDraft[risk.id] = savedDraftLimits[risk.id] || {
+      initialDraft[risk.id] = pendingChanges[risk.id] || {
         cleanOpRisk: risk.cleanOpRisk.limit || 0,
         creditOpRisk: risk.creditOpRisk.limit || 0,
         indirectLosses: risk.indirectLosses.limit || 0
@@ -192,67 +198,57 @@ const Index = () => {
     setScreenMode('edit');
   };
 
-  const handleSaveDraft = () => {
-    setSavedDraftLimits(draftLimits);
-    setScreenMode('draft');
-  };
 
   const handleCancelEdit = () => {
-    setDraftLimits({});
-    setScreenMode(Object.keys(savedDraftLimits).length > 0 ? 'draft' : 'view');
-  };
-
-  const handleDiscardDraft = () => {
-    setSavedDraftLimits({});
     setDraftLimits({});
     setScreenMode('view');
   };
 
   const handleSendForApproval = () => {
-    // Apply draft limits to risks and change status
-    const changedRiskIds = Object.keys(savedDraftLimits);
+    // Apply pending limits to risks and change status
+    const changedRiskIds = Object.keys(pendingChanges);
     setRisks(risks.map(r => {
       if (changedRiskIds.includes(r.id)) {
         return {
           ...r,
           status: 'На согласовании' as const,
-          cleanOpRisk: { ...r.cleanOpRisk, limit: savedDraftLimits[r.id].cleanOpRisk },
-          creditOpRisk: { ...r.creditOpRisk, limit: savedDraftLimits[r.id].creditOpRisk },
-          indirectLosses: { ...r.indirectLosses, limit: savedDraftLimits[r.id].indirectLosses }
+          cleanOpRisk: { ...r.cleanOpRisk, limit: pendingChanges[r.id].cleanOpRisk },
+          creditOpRisk: { ...r.creditOpRisk, limit: pendingChanges[r.id].creditOpRisk },
+          indirectLosses: { ...r.indirectLosses, limit: pendingChanges[r.id].indirectLosses }
         };
       }
       return r;
     }));
-    setSavedDraftLimits({});
+    setPendingChanges({});
     setDraftLimits({});
-    setScreenMode('view');
   };
 
-  const changedRisksCount = Object.keys(
-    screenMode === 'draft' ? savedDraftLimits : draftLimits
-  ).filter(id => {
+  const handleReturnForRevision = () => {
+    // Return risks that are "На согласовании" back to "В работе"
+    setRisks(risks.map(r => {
+      if (r.status === 'На согласовании') {
+        return { ...r, status: 'В работе' as const };
+      }
+      return r;
+    }));
+  };
+
+  // Count pending changes (for view mode footer)
+  const pendingChangesCount = Object.keys(pendingChanges).filter(id => {
     const risk = risks.find(r => r.id === id);
-    const draft = screenMode === 'draft' ? savedDraftLimits[id] : draftLimits[id];
-    if (!risk || !draft) return false;
+    const pending = pendingChanges[id];
+    if (!risk || !pending) return false;
     return (
-      draft.cleanOpRisk !== (risk.cleanOpRisk.limit || 0) ||
-      draft.creditOpRisk !== (risk.creditOpRisk.limit || 0) ||
-      draft.indirectLosses !== (risk.indirectLosses.limit || 0)
+      pending.cleanOpRisk !== (risk.cleanOpRisk.limit || 0) ||
+      pending.creditOpRisk !== (risk.creditOpRisk.limit || 0) ||
+      pending.indirectLosses !== (risk.indirectLosses.limit || 0)
     );
   }).length;
 
-  const tasksCount = risks.filter(r => r.status === 'В работе' || r.status === 'На согласовании').length;
+  // Count risks awaiting approval (for return for revision button)
+  const awaitingApprovalCount = risks.filter(r => r.status === 'На согласовании').length;
 
-  const getModeLabel = () => {
-    switch (screenMode) {
-      case 'edit':
-        return 'Режим редактирования';
-      case 'draft':
-        return 'Черновик';
-      default:
-        return null;
-    }
-  };
+  const tasksCount = risks.filter(r => r.status === 'В работе' || r.status === 'На согласовании').length;
 
   return (
     <MainLayout>
@@ -262,17 +258,9 @@ const Index = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold">Оценка рисков за период</h1>
-              {getModeLabel() && (
-                <Badge 
-                  variant={screenMode === 'edit' ? 'default' : 'secondary'} 
-                  className="gap-1.5"
-                >
-                  {getModeLabel()}
-                  {changedRisksCount > 0 && (
-                    <span className="ml-1 text-xs opacity-80">
-                      ({changedRisksCount} изм.)
-                    </span>
-                  )}
+              {screenMode === 'edit' && (
+                <Badge variant="default" className="gap-1.5">
+                  Режим редактирования
                 </Badge>
               )}
             </div>
@@ -282,7 +270,7 @@ const Index = () => {
                 <>
                   <Button variant="outline" onClick={handleStartEdit} className="gap-2">
                     <Pencil className="w-4 h-4" />
-                    Редактировать
+                    Редактировать лимиты
                   </Button>
                   <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
                     <Plus className="w-4 h-4" />
@@ -295,23 +283,11 @@ const Index = () => {
                 <>
                   <Button variant="outline" onClick={handleCancelEdit} className="gap-2">
                     <X className="w-4 h-4" />
-                    Отмена
+                    Отменить редактирование
                   </Button>
-                  <Button onClick={handleSaveDraft} className="gap-2">
+                  <Button onClick={handleSaveLimits} className="gap-2">
                     <Save className="w-4 h-4" />
-                    Сохранить черновик
-                  </Button>
-                </>
-              )}
-
-              {screenMode === 'draft' && (
-                <>
-                  <Button variant="outline" onClick={handleDiscardDraft}>
-                    Отменить изменения
-                  </Button>
-                  <Button variant="outline" onClick={handleStartEdit} className="gap-2">
-                    <Pencil className="w-4 h-4" />
-                    Продолжить редактирование
+                    Сохранить
                   </Button>
                 </>
               )}
@@ -405,11 +381,11 @@ const Index = () => {
             {/* === RISK LIST ZONE === */}
             <div className="space-y-3">
               {filteredRisks.map((risk) => (
-                <RiskCard
+              <RiskCard
                   key={risk.id}
                   risk={risk}
                   mode={screenMode}
-                  draftLimits={screenMode === 'draft' ? savedDraftLimits[risk.id] : draftLimits[risk.id]}
+                  draftLimits={screenMode === 'edit' ? draftLimits[risk.id] : pendingChanges[risk.id]}
                   onLimitChange={handleLimitChange}
                   onRiskClick={handleRiskClick}
                 />
@@ -424,17 +400,36 @@ const Index = () => {
           </div>
         </div>
 
-        {/* === FOOTER ZONE: Sticky Workflow Actions === */}
-        {screenMode === 'draft' && changedRisksCount > 0 && (
+        {/* === FOOTER ZONE: Sticky Workflow Actions (View mode only) === */}
+        {screenMode === 'view' && (pendingChangesCount > 0 || awaitingApprovalCount > 0) && (
           <div className="sticky bottom-0 px-6 py-4 border-t border-border bg-card/95 backdrop-blur-sm">
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{changedRisksCount}</span> рисков с изменёнными лимитами готовы к отправке
+                {pendingChangesCount > 0 && (
+                  <span>
+                    <span className="font-medium text-foreground">{pendingChangesCount}</span> рисков с изменёнными лимитами
+                  </span>
+                )}
+                {pendingChangesCount > 0 && awaitingApprovalCount > 0 && ' • '}
+                {awaitingApprovalCount > 0 && (
+                  <span>
+                    <span className="font-medium text-foreground">{awaitingApprovalCount}</span> на согласовании
+                  </span>
+                )}
               </div>
-              <Button onClick={handleSendForApproval} className="gap-2">
-                <Send className="w-4 h-4" />
-                Отправить на согласование
-              </Button>
+              <div className="flex items-center gap-2">
+                {awaitingApprovalCount > 0 && (
+                  <Button variant="outline" onClick={handleReturnForRevision} className="gap-2">
+                    Вернуть на доработку
+                  </Button>
+                )}
+                {pendingChangesCount > 0 && (
+                  <Button onClick={handleSendForApproval} className="gap-2">
+                    <Send className="w-4 h-4" />
+                    Отправить на согласование
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -454,7 +449,7 @@ const Index = () => {
           setIsEditOpen(false);
           setEditingRisk(null);
         }}
-        onSave={handleSaveEdit}
+        onSave={handleSaveRiskEdit}
         editRisk={editingRisk}
       />
 
