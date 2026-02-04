@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Filter, Plus, Pencil, Save, Send, X } from 'lucide-react';
+import { Plus, Pencil, Save, Send, X, ListTodo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { MetricCard } from '@/components/risks/MetricCard';
@@ -7,6 +7,14 @@ import { RiskCard } from '@/components/risks/RiskCard';
 import { CreateRiskForm } from '@/components/risks/CreateRiskForm';
 import { RiskDetailView } from '@/components/risks/RiskDetailView';
 import { Badge } from '@/components/ui/badge';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { mockRisks } from '@/data/mockRisks';
 import { Risk } from '@/types/risk';
 
@@ -33,7 +41,35 @@ const Index = () => {
   const [draftLimits, setDraftLimits] = useState<DraftLimits>({});
   const [savedDraftLimits, setSavedDraftLimits] = useState<DraftLimits>({});
 
-  // Calculate aggregates based on current mode
+  // Filter state
+  const [showTasksOnly, setShowTasksOnly] = useState(false);
+  const [selectedSubdivision, setSelectedSubdivision] = useState<string>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('2026');
+
+  // Get unique subdivisions for filter
+  const subdivisions = useMemo(() => {
+    const unique = [...new Set(risks.map(r => r.subdivision))];
+    return unique;
+  }, [risks]);
+
+  // Filtered risks based on current filters
+  const filteredRisks = useMemo(() => {
+    let filtered = risks;
+    
+    if (showTasksOnly) {
+      filtered = filtered.filter(r => 
+        r.status === 'В работе' || r.status === 'На согласовании'
+      );
+    }
+    
+    if (selectedSubdivision !== 'all') {
+      filtered = filtered.filter(r => r.subdivision === selectedSubdivision);
+    }
+    
+    return filtered;
+  }, [risks, showTasksOnly, selectedSubdivision]);
+
+  // Calculate aggregates based on filtered risks and current mode
   const aggregates = useMemo(() => {
     const limitsToUse = screenMode === 'draft' ? savedDraftLimits : 
                         screenMode === 'edit' ? draftLimits : {};
@@ -46,7 +82,7 @@ const Index = () => {
     let indirectLimit = 0;
     let potentialTotal = 0;
 
-    risks.forEach(risk => {
+    filteredRisks.forEach(risk => {
       const draft = limitsToUse[risk.id];
       
       cleanOpTotal += risk.cleanOpRisk.value || 0;
@@ -81,7 +117,7 @@ const Index = () => {
         total: potentialTotal
       }
     };
-  }, [risks, screenMode, draftLimits, savedDraftLimits]);
+  }, [filteredRisks, screenMode, draftLimits, savedDraftLimits]);
 
   const handleRiskClick = (risk: Risk) => {
     setSelectedRisk(risk);
@@ -205,12 +241,14 @@ const Index = () => {
     );
   }).length;
 
+  const tasksCount = risks.filter(r => r.status === 'В работе' || r.status === 'На согласовании').length;
+
   const getModeLabel = () => {
     switch (screenMode) {
       case 'edit':
-        return 'Редактирование лимитов';
+        return 'Режим редактирования';
       case 'draft':
-        return 'Черновик изменений';
+        return 'Черновик';
       default:
         return null;
     }
@@ -218,134 +256,188 @@ const Index = () => {
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6">
-        {/* Top Actions Bar */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Badge variant="secondary" className="gap-1.5 px-3 py-1.5 text-sm">
-              <span className="w-5 h-5 rounded-md bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
-                {risks.filter(r => r.status === 'В работе' || r.status === 'На согласовании').length}
-              </span>
-              Задачи
-            </Badge>
-            {getModeLabel() && (
-              <Badge 
-                variant={screenMode === 'edit' ? 'default' : 'secondary'} 
-                className="gap-1.5 px-3 py-1.5 text-sm"
-              >
-                {getModeLabel()}
-                {changedRisksCount > 0 && (
-                  <span className="ml-1 text-xs opacity-80">
-                    ({changedRisksCount} изм.)
-                  </span>
-                )}
-              </Badge>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon">
-              <Filter className="w-4 h-4" />
-            </Button>
-            <Button variant="outline">Подразделение</Button>
-            <Button variant="outline">Период — 2026</Button>
+      <div className="flex flex-col h-full">
+        {/* === HEADER ZONE: Title + Global Actions === */}
+        <div className="px-6 py-4 border-b border-border bg-card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold">Оценка рисков за период</h1>
+              {getModeLabel() && (
+                <Badge 
+                  variant={screenMode === 'edit' ? 'default' : 'secondary'} 
+                  className="gap-1.5"
+                >
+                  {getModeLabel()}
+                  {changedRisksCount > 0 && (
+                    <span className="ml-1 text-xs opacity-80">
+                      ({changedRisksCount} изм.)
+                    </span>
+                  )}
+                </Badge>
+              )}
+            </div>
             
-            {screenMode === 'view' && (
-              <>
-                <Button variant="outline" onClick={handleStartEdit} className="gap-2">
-                  <Pencil className="w-4 h-4" />
-                  Редактировать
-                </Button>
-                <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Создать риск
-                </Button>
-              </>
-            )}
+            <div className="flex items-center gap-2">
+              {screenMode === 'view' && (
+                <>
+                  <Button variant="outline" onClick={handleStartEdit} className="gap-2">
+                    <Pencil className="w-4 h-4" />
+                    Редактировать
+                  </Button>
+                  <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+                    <Plus className="w-4 h-4" />
+                    Создать риск
+                  </Button>
+                </>
+              )}
 
-            {screenMode === 'edit' && (
-              <>
-                <Button variant="outline" onClick={handleCancelEdit} className="gap-2">
-                  <X className="w-4 h-4" />
-                  Отмена
-                </Button>
-                <Button onClick={handleSaveDraft} className="gap-2">
-                  <Save className="w-4 h-4" />
-                  Сохранить черновик
-                </Button>
-              </>
-            )}
+              {screenMode === 'edit' && (
+                <>
+                  <Button variant="outline" onClick={handleCancelEdit} className="gap-2">
+                    <X className="w-4 h-4" />
+                    Отмена
+                  </Button>
+                  <Button onClick={handleSaveDraft} className="gap-2">
+                    <Save className="w-4 h-4" />
+                    Сохранить черновик
+                  </Button>
+                </>
+              )}
 
-            {screenMode === 'draft' && (
-              <>
-                <Button variant="outline" onClick={handleDiscardDraft}>
-                  Отменить изменения
-                </Button>
-                <Button variant="outline" onClick={handleStartEdit} className="gap-2">
-                  <Pencil className="w-4 h-4" />
-                  Продолжить редактирование
-                </Button>
-                <Button onClick={handleSendForApproval} className="gap-2">
-                  <Send className="w-4 h-4" />
-                  Отправить на согласование
-                </Button>
-              </>
-            )}
+              {screenMode === 'draft' && (
+                <>
+                  <Button variant="outline" onClick={handleDiscardDraft}>
+                    Отменить изменения
+                  </Button>
+                  <Button variant="outline" onClick={handleStartEdit} className="gap-2">
+                    <Pencil className="w-4 h-4" />
+                    Продолжить редактирование
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Metric Cards */}
-        <div className="grid grid-cols-4 gap-4">
-          <MetricCard 
-            title="Чистый операционный риск"
-            value={`${aggregates.cleanOpRisk.total.toLocaleString('ru-RU')} млн руб.`}
-            subValue={`из ${aggregates.cleanOpRisk.limit.toLocaleString('ru-RU')} млн руб.`}
-            utilization={aggregates.cleanOpRisk.utilization}
-            color="emerald"
-          />
-          <MetricCard 
-            title="Опрриск в кредитовании"
-            value={`${aggregates.creditOpRisk.total.toLocaleString('ru-RU')} млн руб.`}
-            subValue={`из ${aggregates.creditOpRisk.limit.toLocaleString('ru-RU')} млн руб.`}
-            utilization={aggregates.creditOpRisk.utilization}
-            color="cyan"
-          />
-          <MetricCard 
-            title="Косвенные потери"
-            value={`${aggregates.indirectLosses.total.toLocaleString('ru-RU')} млн руб.`}
-            subValue={`из ${aggregates.indirectLosses.limit.toLocaleString('ru-RU')} млн руб.`}
-            utilization={aggregates.indirectLosses.utilization}
-            color="yellow"
-          />
-          <MetricCard 
-            title="Потенциальные потери"
-            value={`${aggregates.potentialLosses.total.toLocaleString('ru-RU')} млн руб.`}
-            utilization={0}
-            showDonut={false}
-            color="pink"
-          />
+        {/* === SCROLLABLE CONTENT AREA === */}
+        <div className="flex-1 overflow-auto">
+          <div className="p-6 space-y-6">
+            {/* === WIDGETS ZONE: Aggregated Metrics === */}
+            <div className="grid grid-cols-4 gap-4">
+              <MetricCard 
+                title="Чистый операционный риск"
+                value={`${aggregates.cleanOpRisk.total.toLocaleString('ru-RU')} млн руб.`}
+                subValue={`из ${aggregates.cleanOpRisk.limit.toLocaleString('ru-RU')} млн руб.`}
+                utilization={aggregates.cleanOpRisk.utilization}
+                color="emerald"
+              />
+              <MetricCard 
+                title="Опрриск в кредитовании"
+                value={`${aggregates.creditOpRisk.total.toLocaleString('ru-RU')} млн руб.`}
+                subValue={`из ${aggregates.creditOpRisk.limit.toLocaleString('ru-RU')} млн руб.`}
+                utilization={aggregates.creditOpRisk.utilization}
+                color="cyan"
+              />
+              <MetricCard 
+                title="Косвенные потери"
+                value={`${aggregates.indirectLosses.total.toLocaleString('ru-RU')} млн руб.`}
+                subValue={`из ${aggregates.indirectLosses.limit.toLocaleString('ru-RU')} млн руб.`}
+                utilization={aggregates.indirectLosses.utilization}
+                color="yellow"
+              />
+              <MetricCard 
+                title="Потенциальные потери"
+                value={`${aggregates.potentialLosses.total.toLocaleString('ru-RU')} млн руб.`}
+                utilization={0}
+                showDonut={false}
+                color="pink"
+              />
+            </div>
+
+            {/* === FILTERS ZONE === */}
+            <div className="flex items-center gap-3 pb-2 border-b border-border">
+              <ToggleGroup 
+                type="single" 
+                value={showTasksOnly ? 'tasks' : ''} 
+                onValueChange={(val) => setShowTasksOnly(val === 'tasks')}
+              >
+                <ToggleGroupItem value="tasks" className="gap-2 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+                  <ListTodo className="w-4 h-4" />
+                  Задачи
+                  <span className="ml-1 px-1.5 py-0.5 text-xs rounded-md bg-background/20 font-medium">
+                    {tasksCount}
+                  </span>
+                </ToggleGroupItem>
+              </ToggleGroup>
+
+              <div className="h-6 w-px bg-border" />
+
+              <Select value={selectedSubdivision} onValueChange={setSelectedSubdivision}>
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue placeholder="Подразделение" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все подразделения</SelectItem>
+                  {subdivisions.map(sub => (
+                    <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Период" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2024">2024</SelectItem>
+                  <SelectItem value="2025">2025</SelectItem>
+                  <SelectItem value="2026">2026</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex-1" />
+
+              <span className="text-sm text-muted-foreground">
+                Показано {filteredRisks.length} из {risks.length}
+              </span>
+            </div>
+
+            {/* === RISK LIST ZONE === */}
+            <div className="space-y-3">
+              {filteredRisks.map((risk) => (
+                <RiskCard
+                  key={risk.id}
+                  risk={risk}
+                  mode={screenMode}
+                  draftLimits={screenMode === 'draft' ? savedDraftLimits[risk.id] : draftLimits[risk.id]}
+                  onLimitChange={handleLimitChange}
+                  onRiskClick={handleRiskClick}
+                />
+              ))}
+
+              {filteredRisks.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  Нет рисков, соответствующих выбранным фильтрам
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* List Header */}
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            Всего рисков {risks.length}
-          </span>
-        </div>
-
-        {/* Risk Cards List */}
-        <div className="space-y-3">
-          {risks.map((risk) => (
-            <RiskCard
-              key={risk.id}
-              risk={risk}
-              mode={screenMode}
-              draftLimits={screenMode === 'draft' ? savedDraftLimits[risk.id] : draftLimits[risk.id]}
-              onLimitChange={handleLimitChange}
-              onRiskClick={handleRiskClick}
-            />
-          ))}
-        </div>
+        {/* === FOOTER ZONE: Sticky Workflow Actions === */}
+        {screenMode === 'draft' && changedRisksCount > 0 && (
+          <div className="sticky bottom-0 px-6 py-4 border-t border-border bg-card/95 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{changedRisksCount}</span> рисков с изменёнными лимитами готовы к отправке
+              </div>
+              <Button onClick={handleSendForApproval} className="gap-2">
+                <Send className="w-4 h-4" />
+                Отправить на согласование
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Create Risk Form */}
