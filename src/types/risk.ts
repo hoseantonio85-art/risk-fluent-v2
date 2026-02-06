@@ -34,6 +34,7 @@ export interface LossLimit {
   value: number;
   utilization: number;
   limit?: number;
+  fact2024?: number;
   fact2025?: number;
   forecast2025?: number;
 }

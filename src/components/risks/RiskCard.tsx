@@ -1,15 +1,14 @@
-import { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { AlertTriangle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Risk, LossLimit } from '@/types/risk';
-import { Input } from '@/components/ui/input';
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
+import { RetroDataTable } from './RetroDataTable';
 
-type ScreenMode = 'view' | 'edit' | 'draft';
+type ScreenMode = 'view' | 'edit';
 
 interface RiskCardProps {
   risk: Risk;
@@ -26,23 +25,21 @@ interface RiskCardProps {
 function LossTypeDisplay({
   label,
   data,
-  mode,
   draftValue,
   originalValue,
-  onValueChange,
+  showDraft = false,
   showUtilization = true,
 }: {
   label: string;
   data: LossLimit;
-  mode: ScreenMode;
   draftValue?: number;
   originalValue?: number;
-  onValueChange?: (value: number) => void;
+  showDraft?: boolean;
   showUtilization?: boolean;
 }) {
-  const displayValue = mode === 'draft' && draftValue !== undefined ? draftValue : (data.limit || 0);
+  const displayValue = showDraft && draftValue !== undefined ? draftValue : (data.limit || 0);
   const utilization = data.utilization || 0;
-  const hasChange = mode === 'draft' && draftValue !== undefined && draftValue !== originalValue;
+  const hasChange = showDraft && draftValue !== undefined && draftValue !== originalValue;
 
   const getUtilizationColor = () => {
     if (utilization > 100) return 'text-util-over bg-util-over/10';
@@ -55,55 +52,45 @@ function LossTypeDisplay({
     <div className="flex flex-col gap-1">
       <span className="text-xs text-muted-foreground">{label}</span>
       <div className="flex items-center gap-2">
-        {mode === 'edit' && onValueChange ? (
-          <Input
-            type="number"
-            value={displayValue}
-            onChange={(e) => onValueChange(parseFloat(e.target.value) || 0)}
-            className="h-8 w-24 text-sm font-medium"
-            step="0.1"
-          />
-        ) : (
-          <HoverCard openDelay={200}>
-            <HoverCardTrigger asChild>
-              <span className={cn(
-                "font-medium text-sm cursor-help",
-                hasChange && "text-primary"
-              )}>
-                {displayValue > 0 ? `${displayValue.toLocaleString('ru-RU')} млн` : '—'}
-                {hasChange && originalValue !== undefined && (
-                  <span className="ml-1 text-xs text-muted-foreground">
-                    (было {originalValue.toLocaleString('ru-RU')})
-                  </span>
-                )}
-              </span>
-            </HoverCardTrigger>
-            <HoverCardContent className="w-64" side="top">
-              <div className="space-y-2">
-                <p className="text-xs font-medium">{label}</p>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Лимит:</span>
-                    <span className="ml-1 font-medium">{(data.limit || 0).toLocaleString('ru-RU')} млн</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Факт 2025:</span>
-                    <span className="ml-1 font-medium">{(data.fact2025 || 0).toLocaleString('ru-RU')} млн</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Прогноз 2025:</span>
-                    <span className="ml-1 font-medium">{(data.forecast2025 || 0).toLocaleString('ru-RU')} млн</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Утилизация:</span>
-                    <span className="ml-1 font-medium">{utilization}%</span>
-                  </div>
+        <HoverCard openDelay={200}>
+          <HoverCardTrigger asChild>
+            <span className={cn(
+              "font-medium text-sm cursor-help",
+              hasChange && "text-primary"
+            )}>
+              {displayValue > 0 ? `${displayValue.toLocaleString('ru-RU')} млн` : '—'}
+              {hasChange && originalValue !== undefined && (
+                <span className="ml-1 text-xs text-muted-foreground">
+                  (было {originalValue.toLocaleString('ru-RU')})
+                </span>
+              )}
+            </span>
+          </HoverCardTrigger>
+          <HoverCardContent className="w-64" side="top">
+            <div className="space-y-2">
+              <p className="text-xs font-medium">{label}</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-muted-foreground">Лимит:</span>
+                  <span className="ml-1 font-medium">{(data.limit || 0).toLocaleString('ru-RU')} млн</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Факт 2025:</span>
+                  <span className="ml-1 font-medium">{(data.fact2025 || 0).toLocaleString('ru-RU')} млн</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Прогноз 2025:</span>
+                  <span className="ml-1 font-medium">{(data.forecast2025 || 0).toLocaleString('ru-RU')} млн</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Утилизация:</span>
+                  <span className="ml-1 font-medium">{utilization}%</span>
                 </div>
               </div>
-            </HoverCardContent>
-          </HoverCard>
-        )}
-        {showUtilization && utilization > 0 && mode !== 'edit' && (
+            </div>
+          </HoverCardContent>
+        </HoverCard>
+        {showUtilization && utilization > 0 && (
           <span className={cn(
             "text-xs font-medium px-1.5 py-0.5 rounded",
             getUtilizationColor()
@@ -123,13 +110,11 @@ export function RiskCard({
   onLimitChange,
   onRiskClick 
 }: RiskCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   const hasWarning = risk.cleanOpRisk.utilization > 100 || 
                      risk.creditOpRisk.utilization > 100 || 
                      risk.indirectLosses.utilization > 100;
 
-  const hasChanges = mode === 'draft' && draftLimits && (
+  const showDraft = draftLimits !== undefined && (
     draftLimits.cleanOpRisk !== (risk.cleanOpRisk.limit || 0) ||
     draftLimits.creditOpRisk !== (risk.creditOpRisk.limit || 0) ||
     draftLimits.indirectLosses !== (risk.indirectLosses.limit || 0)
@@ -153,8 +138,7 @@ export function RiskCard({
   return (
     <div className={cn(
       "border border-border rounded-xl bg-card transition-all",
-      hasChanges && "ring-2 ring-primary/20 border-primary/30",
-      mode === 'edit' && "shadow-sm"
+      showDraft && "ring-2 ring-primary/20 border-primary/30",
     )}>
       {/* Card Header */}
       <div className="flex items-start gap-4 p-4 pb-3">
@@ -166,7 +150,7 @@ export function RiskCard({
           {hasWarning && (
             <AlertTriangle className="w-4 h-4 text-util-over" />
           )}
-          {hasChanges && (
+          {showDraft && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
               Изменено
             </span>
@@ -191,88 +175,43 @@ export function RiskCard({
         </button>
       </div>
 
-      {/* Loss Types Grid */}
+      {/* Loss Types Summary Grid */}
       <div className="grid grid-cols-4 gap-4 px-4 pb-4">
         <LossTypeDisplay
           label="Чистый опрриск"
           data={risk.cleanOpRisk}
-          mode={mode}
           draftValue={draftLimits?.cleanOpRisk}
           originalValue={risk.cleanOpRisk.limit || 0}
-          onValueChange={mode === 'edit' ? (v) => onLimitChange?.(risk.id, 'cleanOpRisk', v) : undefined}
+          showDraft={showDraft}
         />
         <LossTypeDisplay
           label="Опрриск в кредитовании"
           data={risk.creditOpRisk}
-          mode={mode}
           draftValue={draftLimits?.creditOpRisk}
           originalValue={risk.creditOpRisk.limit || 0}
-          onValueChange={mode === 'edit' ? (v) => onLimitChange?.(risk.id, 'creditOpRisk', v) : undefined}
+          showDraft={showDraft}
         />
         <LossTypeDisplay
           label="Косвенные потери"
           data={risk.indirectLosses}
-          mode={mode}
           draftValue={draftLimits?.indirectLosses}
           originalValue={risk.indirectLosses.limit || 0}
-          onValueChange={mode === 'edit' ? (v) => onLimitChange?.(risk.id, 'indirectLosses', v) : undefined}
+          showDraft={showDraft}
         />
         <LossTypeDisplay
           label="Потенциальные потери"
           data={{ value: risk.potentialLosses, utilization: 0 }}
-          mode="view"
           showUtilization={false}
         />
       </div>
 
-      {/* Expandable Details (for historical data) */}
-      {mode !== 'edit' && (
-        <div className="border-t border-border">
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center justify-center gap-1 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-          >
-            {isExpanded ? (
-              <>
-                <ChevronUp className="w-3 h-3" />
-                Скрыть детали
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3 h-3" />
-                Показать детали
-              </>
-            )}
-          </button>
-
-          {isExpanded && (
-            <div className="px-4 pb-4 pt-2 grid grid-cols-4 gap-4 bg-muted/30">
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Блок</span>
-                <p className="text-sm">{risk.block}</p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Подразделение</span>
-                <p className="text-sm">{risk.subdivision}</p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Процесс</span>
-                <p className="text-sm">{risk.process}</p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Уровень риска</span>
-                <p className={cn(
-                  "text-sm font-medium",
-                  risk.riskLevel === 'Высокий' && "text-util-over",
-                  risk.riskLevel === 'Средний' && "text-util-medium",
-                  risk.riskLevel === 'Низкий' && "text-util-low"
-                )}>
-                  {risk.riskLevel}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Retro Data Accordion — only in edit mode */}
+      {mode === 'edit' && (
+        <RetroDataTable
+          risk={risk}
+          draftLimits={draftLimits}
+          onLimitChange={onLimitChange}
+        />
       )}
     </div>
   );
