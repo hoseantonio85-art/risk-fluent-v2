@@ -26,7 +26,7 @@ interface LossRow {
 }
 
 export function RetroDataTable({ risk, draftLimits, onLimitChange }: RetroDataTableProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const rows: LossRow[] = [
     {
@@ -90,7 +90,9 @@ export function RetroDataTable({ risk, draftLimits, onLimitChange }: RetroDataTa
                   <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">Факт 2025</th>
                   <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">Прогноз 2025</th>
                   <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">Текущий лимит</th>
-                  <th className="text-center py-2.5 px-3 font-medium text-foreground">Новый лимит</th>
+                  {onLimitChange && (
+                    <th className="text-center py-2.5 px-3 font-medium text-foreground">Новый лимит</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -101,17 +103,19 @@ export function RetroDataTable({ risk, draftLimits, onLimitChange }: RetroDataTa
                     <td className="py-2.5 px-3 text-center text-muted-foreground">{formatValue(row.fact2025)}</td>
                     <td className="py-2.5 px-3 text-center text-muted-foreground">{formatValue(row.forecast2025)}</td>
                     <td className="py-2.5 px-3 text-center text-muted-foreground">{formatValue(row.currentLimit)}</td>
-                    <td className="py-2 px-3">
-                      <div className="flex justify-center">
-                        <Input
-                          type="number"
-                          value={row.newLimit}
-                          onChange={(e) => onLimitChange?.(risk.id, row.field, parseFloat(e.target.value) || 0)}
-                          className="h-8 w-24 text-center text-sm font-semibold"
-                          step="0.1"
-                        />
-                      </div>
-                    </td>
+                    {onLimitChange && (
+                      <td className="py-2 px-3">
+                        <div className="flex justify-center">
+                          <Input
+                            type="number"
+                            value={row.newLimit}
+                            onChange={(e) => onLimitChange(risk.id, row.field, parseFloat(e.target.value) || 0)}
+                            className="h-8 w-24 text-center text-sm font-semibold"
+                            step="0.1"
+                          />
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

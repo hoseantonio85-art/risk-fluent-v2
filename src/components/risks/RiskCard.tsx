@@ -206,14 +206,12 @@ export function RiskCard({
         />
       </div>
 
-      {/* Retro Data Accordion — only in edit mode */}
-      {mode === 'edit' && (
-        <RetroDataTable
-          risk={risk}
-          draftLimits={draftLimits}
-          onLimitChange={onLimitChange}
-        />
-      )}
+      {/* Retro Data Accordion */}
+      <RetroDataTable
+        risk={risk}
+        draftLimits={mode === 'edit' ? draftLimits : undefined}
+        onLimitChange={mode === 'edit' ? onLimitChange : undefined}
+      />
     </div>
   );
 }
